@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"net"
 	_ "fmt"
 	"net/http"
+	"net/http/httputil"
 	"io/ioutil"
 	"encoding/json"
 	_ "reflect"
@@ -11,10 +13,20 @@ import (
 )
 
 func main() {
-  // url := "http://tethys:2375/containers/265926ce9f05/json"
-	url :- "unix:/"
-	
-	resp, _ := http.Get(url)
+	req, err := http.NewRequest("GET", "/containers/2a03159ba971/json", nil)
+
+	// conn, err := net.Dial("unix", "/var/run/docker.sock")
+	conn, err := net.Dial("tcp", "tethys:2375")
+        if err != nil {
+		panic(err)
+	}
+	defer conn.Close()
+
+	client := httputil.NewClientConn(conn, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
 	defer resp.Body.Close()
 	
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -22,8 +34,6 @@ func main() {
 	
 	json.Unmarshal(body, &f)
 	
-	tmpl,_ := template.New("test").Parse("value={{(index (index .NetworkSettings.Ports \"1521/tcp\") 0).HostPort}}")
+	tmpl,_ := template.New("test").Parse("value={{(index (index .NetworkSettings.Ports \"4001/tcp\") 0).HostPort}}\n")
 	tmpl.Execute(os.Stdout, f)
-	
-	// fmt.Printf("===> " + reflect.TypeOf(f).Name())
 }
