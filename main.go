@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"errors"
+	"time"
 	"net/http"
 	"net/http/httputil"
 	"io/ioutil"
@@ -31,6 +32,7 @@ func Dial()(net.Conn, error) {
 func main() {
 	format := ""
 	etcd := false
+	wait := false
 
 	n := 1
 	for {
@@ -43,6 +45,9 @@ func main() {
 		} else if os.Args[n] == "--etcd" {
 			etcd = true
 			n++
+		} else if os.Args[n] == "-w" {
+			wait = true
+			n++
 		} else {
 			break
 		}
@@ -50,7 +55,6 @@ func main() {
 	if format != "" && etcd {
 		format = "value=" + format
 	}
-
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("/containers/%s/json", os.Args[n]), nil)
 
@@ -61,16 +65,34 @@ func main() {
 	defer conn.Close()
 
 	client := httputil.NewClientConn(conn, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
 	var f interface{}
+	for {
+		resp, err := client.Do(req)
+		if err != nil {
+			panic(err)
+		}
+		defer resp.Body.Close()
 
-	json.Unmarshal(body, &f)
+		body, _ := ioutil.ReadAll(resp.Body)
+
+
+		json.Unmarshal(body, &f)
+
+		if !wait {
+			break
+		}
+
+		if f != nil {
+			state := f.(map[string]interface{})["State"].(map[string]interface{})
+			running := state["Running"].(bool)
+			if running {
+				break
+			}
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	if format != "" {
 		tmpl,_ := template.New("test").Parse(format + "\n")
