@@ -3,16 +3,17 @@ package main
 import (
 	"os"
 	"net"
-	_ "fmt"
+	"fmt"
+	"strings"
+	"errors"
 	"net/http"
 	"net/http/httputil"
 	"io/ioutil"
 	"encoding/json"
-	_ "reflect"
 	"text/template"
-	"strings"
-	"errors"
 )
+
+// value={{(index (index .NetworkSettings.Ports \"4001/tcp\") 0).HostPort}}
 
 func Dial()(net.Conn, error) {
 	url := os.Getenv("DOCKER_HOST")
@@ -28,7 +29,30 @@ func Dial()(net.Conn, error) {
 }
 
 func main() {
-	req, err := http.NewRequest("GET", "/containers/etcd/json", nil)
+	format := ""
+	etcd := false
+
+	n := 1
+	for {
+		if os.Args[n] == "-f" {
+			format = os.Args[n+1]
+			n += 2;
+		} else if os.Args[n] == "-p" {
+			format = fmt.Sprintf("{{(index (index .NetworkSettings.Ports \"%s/tcp\") 0).HostPort}}", os.Args[n + 1])
+			n += 2
+		} else if os.Args[n] == "--etcd" {
+			etcd = true
+			n++
+		} else {
+			break
+		}
+	}
+	if format != "" && etcd {
+		format = "value=" + format
+	}
+
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("/containers/%s/json", os.Args[n]), nil)
 
 	conn, err := Dial()
   if err != nil {
@@ -48,6 +72,12 @@ func main() {
 
 	json.Unmarshal(body, &f)
 
-	tmpl,_ := template.New("test").Parse("value={{(index (index .NetworkSettings.Ports \"4001/tcp\") 0).HostPort}}\n")
-	tmpl.Execute(os.Stdout, f)
+	if format != "" {
+		tmpl,_ := template.New("test").Parse(format + "\n")
+		tmpl.Execute(os.Stdout, f)
+	} else {
+		b, _ := json.MarshalIndent(f, "", "  ")
+		fmt.Printf("%s\n", b)
+	}
+
 }
